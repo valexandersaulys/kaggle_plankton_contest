@@ -2,24 +2,15 @@
 # Specifically I'm using Python 2.7.6
 
 # # # # # # # # # # # # 
-# # # # # # TO DO:
-#	-> Going to use this kaggle code as a base
-#	-> Try Neural Networks, SVM, RandomForest (tutorial on Kaggle for that), Kmeans
-#	-> How to combine different methods?
-#	-> predict_proba returns an array of shape = [n_samples, n_classes]
+# # # # # # 
+#	This is using OpenCV, specifically 2.4.8 which is what I have installed
+#	On my computer.
 #
-#	-> Idea for ensemble learning:
-#		-> Could look at which one is most likely given the circumstances
-#			and then output that one as the final.
-#
-#	-> Tuning needs to be done for output
-#		-> Create a dictionary for outputting
+#	It also makes use of binary thresholdization
 #
 
 
 # libraries for doing image analysis
-from skimage.io import imread
-from skimage.transform import resize
 from sklearn.ensemble import RandomForestClassifier
 import glob
 import os
@@ -29,17 +20,33 @@ from sklearn.metrics import classification_report
 from matplotlib import pyplot as plt
 from matplotlib import colors
 from pylab import cm
-from skimage import segmentation
+#from skimage import segmentation	# This is causing issues
 from skimage.morphology import watershed
 from skimage import measure
 from skimage import morphology
 import numpy as np
 import pandas as pd
 from scipy import ndimage
-from skimage.feature import peak_local_max
+from sklearn.svm import SVC
 import warnings
 import time
+
+import cv2
+import resource
+
+from sklearn.cluster import KMeans
 warnings.filterwarnings("ignore")
+
+
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+print 'Soft limit starts as  :', soft
+
+resource.setrlimit(resource.RLIMIT_NOFILE, (4, hard))
+
+soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+print 'Soft limit changed to :', soft
+
+
 
 from sklearn.externals import joblib # For saving
 
@@ -83,7 +90,10 @@ label = 1	# start the label at 1
 # List of string of class names
 namesClasses = {}		# A dictionary would be far more convenient
 
-print "Reading images"
+# For the thresholding of images, OpenCV requires this
+#ret = [0] * numberofImages; thresh = [0] * numberofImages
+
+print "Reading and thresholding images"
 # Navigate through the list of directories
 for folder in directory_names:
 	# Append the string class name for each class
@@ -95,13 +105,19 @@ for folder in directory_names:
 			# I'm assuming all the files are jpegs        
 			# Read in the images and create the features
 			nameFileImage = "{0}{1}{2}".format(fileNameDir[0], os.sep, fileName)            
-			image = imread(nameFileImage, as_grey=True)
+			image = cv2.imread(nameFileImage, 0)
 			files.append(nameFileImage)
-			image = resize(image, (maxPixel, maxPixel))
+			image = cv2.resize(image,(maxPixel, maxPixel),
+				interpolation = cv2.INTER_CUBIC)
+
+			# Threshold by Binarization
+			ret,thresh = cv2.threshold(image,127,255,cv2.THRESH_BINARY)
+
 			# Store the rescaled image pixels and the axis ratio
-			x_train[i, 0:imageSize] = np.reshape(image, (1, imageSize))        
+			x_train[i, 0:imageSize] = np.reshape(thresh, (1, imageSize))
 			# Store the classlabel
 			y_train[i] = label
+			
 			i += 1		# increment the entry number
 			# report progress for each 5% done  
 			report = [int((j+1)*num_rows/20.) for j in range(20)]
@@ -109,36 +125,31 @@ for folder in directory_names:
 	label += 1
 
 #
-# # # # # #
+# # # # # # # # # # # # # # # #
 #
 
 # So now we have X, our features vectors with its corresponding label vector y
-# Think of the MNIST contest for further calculations	
 
 # Then we build a classifier based on the information
 print "Building Classifier"
-classifier= RandomForestClassifier(n_estimators=500, 
-								criterion='gini', 
-								max_depth=None, 
-								min_samples_split=2,
-								min_samples_leaf=1, 
-								max_features='auto', 
-								max_leaf_nodes=None, 
-								bootstrap=True, 
-								oob_score=False,
-								n_jobs=4, 
-								random_state=None, 
-								verbose=0, 
-								min_density=None, 
-								compute_importances=None)
+classifier = SVC(C=0.1, 
+				kernel='rbf', 
+				degree=3, 
+				gamma=0.0, 
+				coef0=0.0, 
+				shrinking=True, 
+				probability=True, 
+				tol=0.0001, 
+				cache_size=2048, 
+				class_weight=None, 
+				verbose=False, 
+				max_iter=-1, 
+				random_state=None)
 
 # Then we build the predictors
-model_rf = classifier.fit(x_train,y_train)
+model_fit = classifier.fit(x_train,y_train)
 print 'Done!'
 
-print "Now writing to disk with Joblib"
-os.mkdir('model_rf_500n')
-joblib.dump(model_rf, 'model_rf_500n/model_rf_500n.pk') 
 
 # Now we look at the test data
 numOfTest = 0	# To initialize the variable
@@ -161,11 +172,16 @@ for pic in os.listdir('test'):
 	# I'm assuming all the files are jpegs        
 	# Read in the images and create the features
 	nameFileImage = "{0}{1}{2}".format('test', os.sep, pic)            
-	image = imread(nameFileImage, as_grey=True)
+	image = cv2.imread(nameFileImage, 0)
 	test_files.append(nameFileImage[5:])		# We need to take out the "test/" part
-	image = resize(image, (maxPixel, maxPixel))
+	image = cv2.resize(image,(maxPixel, maxPixel),
+				interpolation = cv2.INTER_CUBIC)
+
+	# Threshold by Binarization
+	ret,thresh = cv2.threshold(image,127,255,cv2.THRESH_BINARY)
+
 	# Store the rescaled image pixels and the axis ratio
-	x_test[i, 0:imageSize] = np.reshape(image, (1, imageSize))
+	x_test[i, 0:imageSize] = np.reshape(thresh, (1, imageSize))
 	i += 1		# Increment the entry number
    
 
@@ -175,7 +191,7 @@ for the output:
 	we need the image_name.jpg + predicted probabilities
 """
 print 'Building Predictions'
-probabilities = model_rf.predict_proba(x_test)
+probabilities = model_fit.predict_proba(x_test)
 
 print 'Getting Ready to Submit'
 headers = []
@@ -197,7 +213,7 @@ for i in range(num_rows):
 	submit.iloc[i,1:] = probabilities[i,:]
 
 print "Writing Results to csv..."
-submit.to_csv("submittion_attempt_one_try_3.csv", sep=',', index=False)
+submit.to_csv("submittion_opencv_svc_rbf.csv", sep=',', index=False)
 
 
 

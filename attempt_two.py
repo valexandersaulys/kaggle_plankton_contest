@@ -39,6 +39,7 @@ from scipy import ndimage
 from skimage.feature import peak_local_max
 import warnings
 import time
+import cv2
 warnings.filterwarnings("ignore")
 
 from sklearn.externals import joblib # For saving
@@ -99,7 +100,7 @@ for folder in directory_names:
 			files.append(nameFileImage)
 			image = resize(image, (maxPixel, maxPixel))
 			# Store the rescaled image pixels and the axis ratio
-			x_train[i, 0:imageSize] = np.reshape(image, (1, imageSize))        
+			x_train[i, 0:imageSize] = np.reshape(image, (1, imageSize))
 			# Store the classlabel
 			y_train[i] = label
 			i += 1		# increment the entry number
@@ -109,11 +110,21 @@ for folder in directory_names:
 	label += 1
 
 #
-# # # # # #
+# # # # # # # # # # # # # # # #
 #
 
 # So now we have X, our features vectors with its corresponding label vector y
-# Think of the MNIST contest for further calculations	
+
+# Binarization against weighted average
+for b in range(len(x_train[0,:])):
+	wa.append(x_train[:,b])	# Store average of particular column
+i = 0; j = 0; sottc = np.shape(x_train);
+for i in sottc[0]:
+	for j in sottc[1]:
+		if x_train[i][j] < wa[]
+
+
+
 
 # Then we build a classifier based on the information
 print "Building Classifier"

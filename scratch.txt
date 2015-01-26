@@ -1,0 +1,9 @@
+image = cv2.imread('36191.jpg', 0)
+image = cv2.resize(image,(maxPixel, maxPixel),
+	interpolation = cv2.INTER_CUBIC)
+
+# Threshold by Binarization
+ret,image = cv2.threshold(img,127,255,cv2.THRESH_BINARY)
+
+# Store the rescaled image pixels and the axis ratio
+x_train[0, 0:625] = np.reshape(thresh, (1, 25*25))
